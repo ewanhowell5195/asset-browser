@@ -5,7 +5,7 @@ import { parseZip, createImage, textOf, isImagePath } from "../lib/zip.js"
 import { getModelMatch } from "../lib/models.js"
 import { storage, save } from "../lib/storage.js"
 import { idbGet, idbPut, idbDelete } from "../lib/idb.js"
-import { proxy, fetchBuffer } from "../lib/net.js"
+import { proxy, fetchBuffer, fetchRemoteBuffer, remoteName } from "../lib/net.js"
 import { titleCase, saveBlob, isBlankRender } from "../lib/util.js"
 import { poolActive, startThumbnailPool, stopThumbnailPool, submitThumbnail } from "../lib/thumbnails.js"
 import { basename } from "../lib/path.js"
@@ -28,6 +28,7 @@ const jar = shallowRef(null)
 const tree = shallowRef({})
 const treeTick = ref(0)
 const version = ref(null)
+const zipUrl = ref(null)
 const initialPath = ref([])
 const loadingMessage = ref(null)
 const progressDone = ref(0)
@@ -191,6 +192,78 @@ async function getVersionObjects(id) {
   return objects
 }
 
+function buildTree(parsed) {
+  const built = {}
+  for (const filePath of Object.keys(parsed.files)) {
+    const parts = filePath.split("/")
+    if (parts[0] === "optifine") continue
+    let current = built
+    for (const [index, part] of parts.entries()) {
+      if (!current[part]) {
+        current[part] = index === parts.length - 1 ? filePath : {}
+      }
+      current = current[part]
+    }
+  }
+  parsed.flipbook = null
+  if (built.resource_pack?.textures?.["flipbook_textures.json"]) {
+    try {
+      parsed.flipbook = JSON.parse(textOf(parsed.files[built.resource_pack.textures["flipbook_textures.json"]].content).replace(/\/\/.*$/gm, ""))
+      parsed.flipbook.push({
+        flipbook_texture: "textures/flame_atlas"
+      })
+    } catch {}
+  }
+  return built
+}
+
+async function loadRemoteZip(url, startPath = []) {
+  const name = remoteName(url)
+  loadingMessage.value = `Downloading ${name}…`
+  progressDone.value = 0
+  progressTotal.value = 0
+  progressBytes.value = true
+  try {
+    const buffer = await fetchRemoteBuffer(url, (done, total) => {
+      progressDone.value = done
+      progressTotal.value = total
+    })
+    progressBytes.value = false
+    progressDone.value = 0
+    progressTotal.value = 0
+    loadingMessage.value = `Loading ${name}…`
+    await new Promise(resolve => setTimeout(resolve))
+    const parsed = await parseZip(buffer)
+    if (!Object.keys(parsed.files).length) {
+      throw new Error("It may be corrupted")
+    }
+    zipUrl.value = url
+    version.value = name
+    initialPath.value = startPath
+    tree.value = buildTree(parsed)
+    treeTick.value++
+    jar.value = parsed
+    // the pool reads cached jars out of IndexedDB by id; a remote zip is never
+    // cached, so it only ever loads from the buffer handed over here
+    startThumbnailPool(url, url, buffer)
+    updateUrlParams(params => {
+      params.delete("version")
+      params.delete("objects")
+      params.set("zip", url)
+      if (startPath.length) {
+        params.set("path", startPath.join("/"))
+      } else {
+        params.delete("path")
+      }
+    })
+  } catch (e) {
+    console.error(e)
+    quickMessage(`Unable to load ${name}. ${e.message ?? e}`)
+  }
+  progressBytes.value = false
+  loadingMessage.value = null
+}
+
 async function loadVersion(id, startPath = []) {
   loadingMessage.value = `Loading ${id}…`
   progressDone.value = 0
@@ -207,27 +280,7 @@ async function loadVersion(id, startPath = []) {
         parsed.files[k] = v
       }
     }
-    const built = {}
-    for (const filePath of Object.keys(parsed.files)) {
-      const parts = filePath.split("/")
-      if (parts[0] === "optifine") continue
-      let current = built
-      for (const [index, part] of parts.entries()) {
-        if (!current[part]) {
-          current[part] = index === parts.length - 1 ? filePath : {}
-        }
-        current = current[part]
-      }
-    }
-    parsed.flipbook = null
-    if (built.resource_pack?.textures?.["flipbook_textures.json"]) {
-      try {
-        parsed.flipbook = JSON.parse(textOf(parsed.files[built.resource_pack.textures["flipbook_textures.json"]].content).replace(/\/\/.*$/gm, ""))
-        parsed.flipbook.push({
-          flipbook_texture: "textures/flame_atlas"
-        })
-      } catch {}
-    }
+    const built = buildTree(parsed)
     if (storage.recents.includes(id)) {
       storage.recents.splice(storage.recents.indexOf(id), 1)
     }
@@ -236,6 +289,7 @@ async function loadVersion(id, startPath = []) {
       storage.recents.length = 20
     }
     save()
+    zipUrl.value = null
     version.value = id
     initialPath.value = startPath
     tree.value = built
@@ -250,6 +304,7 @@ async function loadVersion(id, startPath = []) {
     }
     freshBuffer = null
     updateUrlParams(params => {
+      params.delete("zip")
       params.set("version", id)
       if (storage.objects) {
         params.delete("objects")
@@ -288,8 +343,10 @@ function home() {
   stopThumbnailPool()
   jar.value = null
   version.value = null
+  zipUrl.value = null
   updateUrlParams(params => {
     params.delete("version")
+    params.delete("zip")
     params.delete("objects")
     params.delete("path")
     params.delete("file")
@@ -398,7 +455,7 @@ async function preparedAssets() {
 
 function renderArgs() {
   const args = { width: 128, height: 128, animated: true }
-  if (/^\d+\.\d+/.test(version.value)) {
+  if (!zipUrl.value && /^\d+\.\d+/.test(version.value)) {
     args.version = version.value
   }
   return args
@@ -649,6 +706,7 @@ export function useAssets() {
     tree,
     treeTick,
     version,
+    zipUrl,
     initialPath,
     loadingMessage,
     progressDone,
@@ -660,6 +718,7 @@ export function useAssets() {
     loadManifest,
     getVersion,
     loadVersion,
+    loadRemoteZip,
     home,
     toggleObjects,
     deleteCachedVersion,

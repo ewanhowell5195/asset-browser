@@ -15,7 +15,7 @@ import AnimatedTexture from "./AnimatedTexture.vue"
 import ModelThumbnail from "./ModelThumbnail.vue"
 
 const {
-  jar, tree, treeTick, version, initialPath,
+  jar, tree, treeTick, version, zipUrl, initialPath,
   hasAnimation, loadZip, downloadFiles, home, quickMessage
 } = useAssets()
 const { menu, openMenu } = useContextMenu()
@@ -581,9 +581,11 @@ function fileContextMenu(name, event) {
         const dir = dirname(item.path)
         navigator.clipboard.writeText(absoluteLink(item.type === "folder" ? {
           version: version.value,
+          zip: zipUrl.value,
           path: item.path
         } : {
           version: version.value,
+          zip: zipUrl.value,
           path: dir === "." ? "" : dir,
           file: basename(item.path)
         }))
@@ -607,6 +609,7 @@ function breadcrumbContextMenu(index, event) {
       click: () => {
         navigator.clipboard.writeText(absoluteLink({
           version: version.value,
+          zip: zipUrl.value,
           path: folder.join("/")
         }))
         quickMessage("Link copied")

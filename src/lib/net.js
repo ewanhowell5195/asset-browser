@@ -8,8 +8,52 @@ const MOJANG = /^https:\/\/(resources\.download\.minecraft\.net|piston-(data|met
 
 export const proxy = url => (MOJANG.test(url) ? CORS_MC : CORS) + url
 
+export const isRemote = url => /^https?:\/\//i.test(url)
+
+export function remoteName(url) {
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop() ?? ""
+    return decodeURIComponent(last) || url
+  } catch {
+    return url
+  }
+}
+
+// user-supplied urls try the origin directly and only fall back to the proxy
+// when the failure has the shape a cors rejection has: an opaque TypeError,
+// which is all the fetch api ever reveals about one
+const needsProxy = new Set()
+
+function originOf(url) {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
+async function openRemote(url) {
+  const origin = originOf(url)
+  if (origin && !needsProxy.has(origin)) {
+    try {
+      return await fetch(url)
+    } catch (e) {
+      if (e.name !== "TypeError") throw e
+      needsProxy.add(origin)
+    }
+  }
+  return fetch(CORS + url)
+}
+
+export async function fetchRemoteBuffer(url, onProgress) {
+  return readBody(await openRemote(url), onProgress)
+}
+
 export async function fetchBuffer(url, onProgress) {
-  const res = await fetch(url)
+  return readBody(await fetch(url), onProgress)
+}
+
+async function readBody(res, onProgress) {
   if (!res.ok) {
     throw new Error(`Failed to download (${res.status})`)
   }

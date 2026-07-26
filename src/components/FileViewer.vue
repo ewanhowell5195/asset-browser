@@ -11,7 +11,7 @@ import { getModelMatch } from "../lib/models.js"
 import AnimatedTexture from "./AnimatedTexture.vue"
 
 const { viewer, closeViewer } = useViewer()
-const { jar, version, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
+const { jar, version, zipUrl, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
 const { openMenu } = useContextMenu()
 
 const textExtensions = [".json", ".mcmeta", ".txt", ".cfg", ".properties", ".lang", ".glsl", ".vsh", ".fsh", ".html"]
@@ -125,6 +125,7 @@ const downloadUrl = computed(() => {
   const dir = dirname(current.value.path)
   return buildLink({
     version: version.value,
+    zip: zipUrl.value,
     path: dir === "." ? "" : dir,
     file: basename(current.value.path),
     download: true
