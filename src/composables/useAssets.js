@@ -4,7 +4,7 @@ import { loadRenderer } from "../lib/renderer.js"
 import { parseZip, createImage, textOf, isImagePath } from "../lib/zip.js"
 import { getModelMatch } from "../lib/models.js"
 import { storage, save } from "../lib/storage.js"
-import { idbGet, idbPut, idbDelete } from "../lib/idb.js"
+import { idbGet, idbKeys, idbPut, idbDelete } from "../lib/idb.js"
 import { proxy, fetchBuffer, fetchRemoteBuffer, remoteName } from "../lib/net.js"
 import { titleCase, saveBlob, isBlankRender } from "../lib/util.js"
 import { poolActive, startThumbnailPool, stopThumbnailPool, submitThumbnail } from "../lib/thumbnails.js"
@@ -107,7 +107,49 @@ async function getVersionData(id) {
 
 const isBedrockId = id => /^v\d+\.\d+\.\d+\.\d+/.test(id)
 
+async function reconcileCached() {
+  if (!storage.cached.length) return
+  const keys = new Set(await idbKeys("jars").catch(() => null) ?? storage.cached.map(e => e.id))
+  const kept = storage.cached.filter(e => keys.has(e.id))
+  if (kept.length === storage.cached.length) return
+  storage.cached = kept
+  save()
+}
+
+function touchCached(id) {
+  const entry = storage.cached.find(e => e.id === id)
+  if (!entry) return
+  entry.used = Date.now()
+  save()
+}
+
+async function evictOldest(keepId) {
+  const candidates = storage.cached.filter(e => e.id !== keepId)
+  if (!candidates.length) return false
+  const oldest = candidates.reduce((a, b) => (a.used ?? a.date) <= (b.used ?? b.date) ? a : b)
+  await idbDelete("jars", oldest.id).catch(() => {})
+  storage.cached = storage.cached.filter(e => e.id !== oldest.id)
+  save()
+  return true
+}
+
+async function cacheJar(id, buffer) {
+  const entry = { id, date: Date.now(), used: Date.now(), size: buffer.byteLength }
+  while (true) {
+    try {
+      await idbPut("jars", id, { ...entry, data: buffer })
+      storage.cached = storage.cached.filter(e => e.id !== id)
+      storage.cached.unshift(entry)
+      save()
+      return
+    } catch (e) {
+      if (e?.name !== "QuotaExceededError" || !await evictOldest(id)) return
+    }
+  }
+}
+
 async function getVersionJar(id) {
+  touchCached(id)
   if (loadedJars[id]) return loadedJars[id]
   let buffer = (await idbGet("jars", id).catch(() => null))?.data
   if (!buffer) {
@@ -126,11 +168,7 @@ async function getVersionJar(id) {
     // the workers read the jar out of IndexedDB themselves; on a first download
     // the put may not have landed yet, so hand this one copy over instead
     freshBuffer = buffer
-    idbPut("jars", id, { id, date: Date.now(), size: buffer.byteLength, data: buffer }).then(() => {
-      storage.cached = storage.cached.filter(e => e.id !== id)
-      storage.cached.unshift({ id, date: Date.now(), size: buffer.byteLength })
-      save()
-    }).catch(() => {})
+    cacheJar(id, buffer).catch(() => {})
   }
   loadingMessage.value = `Loading ${id}…`
   await new Promise(resolve => setTimeout(resolve))
@@ -716,6 +754,7 @@ export function useAssets() {
     toast,
     quickMessage,
     loadManifest,
+    reconcileCached,
     getVersion,
     loadVersion,
     loadRemoteZip,

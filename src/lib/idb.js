@@ -24,6 +24,11 @@ export async function idbGet(store, key) {
   return promisify(db.transaction(store).objectStore(store).get(key))
 }
 
+export async function idbKeys(store) {
+  const db = await getDB()
+  return promisify(db.transaction(store).objectStore(store).getAllKeys())
+}
+
 export async function idbPut(store, key, value) {
   const db = await getDB()
   return promisify(db.transaction(store, "readwrite").objectStore(store).put(value, key))

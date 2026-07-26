@@ -11,7 +11,7 @@ import LoadingOverlay from "./components/LoadingOverlay.vue"
 import FileViewer from "./components/FileViewer.vue"
 import ContextMenu from "./components/ContextMenu.vue"
 
-const { jar, loadingMessage, exporting, toast, loadManifest, loadVersion, loadRemoteZip, loadZip, getFileContent } = useAssets()
+const { jar, loadingMessage, exporting, toast, loadManifest, reconcileCached, loadVersion, loadRemoteZip, loadZip, getFileContent } = useAssets()
 const { openViewer } = useViewer()
 
 async function ensureZipLoaded(path) {
@@ -23,6 +23,7 @@ async function ensureZipLoaded(path) {
 
 onMounted(async () => {
   const params = new URLSearchParams(location.search)
+  reconcileCached()
   await loadManifest()
   const zip = params.get("zip")
   const versionId = params.get("version")
