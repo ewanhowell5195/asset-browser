@@ -13,8 +13,6 @@ Supports Java releases, snapshots, old beta/alpha, and Bedrock releases/previews
 - Optional objects (sounds, languages, panorama, etc.) from the version's asset index
 - Version jars are cached in IndexedDB so they only download once
 
-Downloads go through `https://cors.ewanhowell.com/` to get around missing CORS headers on Mojang's servers.
-
 ## Development
 
 ```
