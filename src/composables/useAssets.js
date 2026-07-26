@@ -251,6 +251,7 @@ async function loadVersion(id, startPath = []) {
     freshBuffer = null
     updateUrlParams(params => {
       params.set("version", id)
+      params.set("objects", storage.objects ? "1" : "0")
       if (startPath.length) {
         params.set("path", startPath.join("/"))
       } else {
@@ -285,6 +286,7 @@ function home() {
   version.value = null
   updateUrlParams(params => {
     params.delete("version")
+    params.delete("objects")
     params.delete("path")
     params.delete("file")
     params.delete("download")

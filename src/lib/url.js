@@ -1,3 +1,5 @@
+import { storage } from "./storage.js"
+
 export function prettyParams(params) {
   return params.toString().replaceAll("%2F", "/").replace(/=(?=&|$)/g, "")
 }
@@ -5,6 +7,7 @@ export function prettyParams(params) {
 export function buildLink({ version, path, file, download }) {
   const params = new URLSearchParams()
   params.set("version", version)
+  params.set("objects", storage.objects ? "1" : "0")
   if (path) {
     params.set("path", path)
   }

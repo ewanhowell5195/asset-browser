@@ -3,6 +3,7 @@ import { onMounted } from "vue"
 import { useAssets } from "./composables/useAssets.js"
 import { useViewer } from "./composables/useViewer.js"
 import { basename } from "./lib/path.js"
+import { storage } from "./lib/storage.js"
 import { saveBlob } from "./lib/util.js"
 import VersionIndex from "./components/VersionIndex.vue"
 import Browser from "./components/Browser.vue"
@@ -22,6 +23,10 @@ async function ensureZipLoaded(path) {
 
 onMounted(async () => {
   const params = new URLSearchParams(location.search)
+  const objects = params.get("objects")
+  if (objects !== null) {
+    storage.objects = objects !== "0"
+  }
   await loadManifest()
   const versionId = params.get("version")
   if (!versionId) return
