@@ -4,7 +4,7 @@ const CORS_MC = "https://corsmc.ewanhowell.com/"
 // mojang goes through the minecraft proxy, which caches on its own box. github
 // stays on the worker, because bedrock archives come from one Oracle egress IP
 // there and github rate limits per IP, while the worker spreads over many
-const MOJANG = /^https:\/\/(resources\.download\.minecraft\.net|libraries\.minecraft\.net|piston-(data|meta)\.mojang\.com)\//
+const MOJANG = /^https:\/\/(resources\.download\.minecraft\.net|piston-(data|meta)\.mojang\.com)\//
 
 export const proxy = url => (MOJANG.test(url) ? CORS_MC : CORS) + url
 
