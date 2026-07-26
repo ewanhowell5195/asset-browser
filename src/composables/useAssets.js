@@ -461,58 +461,58 @@ async function getFileContent(file) {
   return data.content
 }
 
-// a nested pack overrides what it ships and inherits the rest, so its own files
-// are tried first and the containing jar answers everything else: a pack that
-// only reskins a texture still resolves its vanilla parents
-function assetsSource(prefix = "") {
+function assetsSource() {
   const parsed = jar.value
-  const sources = parsed.assetsSources ??= {}
-  const chain = zipPrefixChain(prefix)
-  const candidates = path => chain.map(layer => layer + path)
-  return sources[prefix] ??= {
+  parsed.assetsSource ??= {
     read: async filePath => {
-      for (const candidate of candidates(filePath)) {
-        const data = parsed.files[candidate] ?? parsed.zips?.[candidate]
-        if (!data) continue
+      const data = parsed.files[filePath] ?? parsed.zips?.[filePath]
+      if (data) {
         if (!data.content && data.object) {
           await fetchObject(data)
         }
         return data.content
       }
       if (filePath.endsWith(".mcmeta")) {
-        for (const base of candidates(filePath.slice(0, -7))) {
-          if (parsed.files[base] && hasAnimation(base) && parsed.files[base].animation) {
-            return JSON.stringify(parsed.files[base].animation)
-          }
+        const base = filePath.slice(0, -7)
+        if (parsed.files[base] && hasAnimation(base) && parsed.files[base].animation) {
+          return JSON.stringify(parsed.files[base].animation)
         }
       }
       return null
     },
     list: dir => {
-      const names = new Set()
-      for (const root of candidates(dir)) {
-        let current = tree.value
-        for (const part of root.split("/")) {
-          if (!part) continue
-          current = current?.[part]
-          if (!current || typeof current === "string") break
-        }
-        if (!current || typeof current === "string") continue
-        for (const name of Object.keys(current)) {
-          if (typeof current[name] === "string") names.add(name)
-        }
+      let current = tree.value
+      for (const part of dir.split("/")) {
+        if (!part) continue
+        current = current?.[part]
+        if (!current || typeof current === "string") return []
       }
-      return Array.from(names)
+      return Object.keys(current).filter(k => typeof current[k] === "string")
     }
   }
+  return parsed.assetsSource
 }
 
+// inside a pack, its zip goes on top as its own layer, and each zip enclosing it
+// below that, ending at the jar. the library stacks them the way the game does,
+// so pack.mcmeta filters and wrapper folders are its problem, not ours
 function preparedAssets(prefix = "") {
   const parsed = jar.value
   const prepared = parsed.prepared ??= {}
   // the promise is memoised, not its result: two tiles asking at once would
   // otherwise both prepare
-  return prepared[prefix] ??= loadRenderer().then(({ prepareAssets }) => prepareAssets(assetsSource(prefix)))
+  return prepared[prefix] ??= loadRenderer().then(async ({ prepareAssets }) => {
+    const layers = []
+    for (const layer of zipPrefixChain(prefix)) {
+      if (!layer) {
+        layers.push(assetsSource())
+        continue
+      }
+      const content = await getFileContent(layer.slice(0, -1))
+      if (content) layers.push(content)
+    }
+    return prepareAssets(layers)
+  })
 }
 
 function renderArgs() {
