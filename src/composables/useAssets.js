@@ -251,7 +251,11 @@ async function loadVersion(id, startPath = []) {
     freshBuffer = null
     updateUrlParams(params => {
       params.set("version", id)
-      params.set("objects", storage.objects ? "1" : "0")
+      if (storage.objects) {
+        params.delete("objects")
+      } else {
+        params.set("objects", "0")
+      }
       if (startPath.length) {
         params.set("path", startPath.join("/"))
       } else {

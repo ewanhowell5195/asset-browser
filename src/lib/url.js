@@ -7,7 +7,9 @@ export function prettyParams(params) {
 export function buildLink({ version, path, file, download }) {
   const params = new URLSearchParams()
   params.set("version", version)
-  params.set("objects", storage.objects ? "1" : "0")
+  if (!storage.objects) {
+    params.set("objects", "0")
+  }
   if (path) {
     params.set("path", path)
   }

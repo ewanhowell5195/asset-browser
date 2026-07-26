@@ -23,13 +23,10 @@ async function ensureZipLoaded(path) {
 
 onMounted(async () => {
   const params = new URLSearchParams(location.search)
-  const objects = params.get("objects")
-  if (objects !== null) {
-    storage.objects = objects !== "0"
-  }
   await loadManifest()
   const versionId = params.get("version")
   if (!versionId) return
+  storage.objects = params.get("objects") !== "0"
   const startPath = params.get("path")?.split("/").filter(Boolean) ?? []
   await loadVersion(versionId, startPath)
   if (!jar.value) return
