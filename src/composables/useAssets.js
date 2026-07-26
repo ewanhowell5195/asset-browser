@@ -576,6 +576,7 @@ function renderModelThumbnail(path) {
         thumb?.dispose()
         return null
       }
+      if (!thumb && job.cancelled) return null
       // keep it even if the tile scrolled away, ready for when it returns
       cache.set(path, thumb)
       return thumb

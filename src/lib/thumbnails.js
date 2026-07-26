@@ -128,7 +128,7 @@ export function startThumbnailPool(id, version, buffer) {
     worker.onmessage = e => onMessage(slot, e.data)
     worker.onerror = () => {
       slot.ready = false
-      if (slot.busy) finish(slot, slot.busy, null)
+      if (slot.busy) finish(slot, slot.busy, undefined)
     }
     worker.postMessage({ type: "init", id, version, clockStart, buffer })
     workers.push(slot)
