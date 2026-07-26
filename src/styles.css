@@ -1,0 +1,144 @@
+:root {
+  --color-back: #21252b;
+  --color-ui: #282c34;
+  --color-frame: #17191d;
+  --color-dark: #17191d;
+  --color-border: #181a21;
+  --color-button: #3a3f4b;
+  --color-selected: #474d5d;
+  --color-accent: #3e90ff;
+  --color-text: #cacad4;
+  --color-light: #f4f3ff;
+  --color-subtle_text: #848891;
+  --color-checker: #ffffff0d;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-button) transparent;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--color-back);
+  color: var(--color-text);
+  font-size: 16px;
+  user-select: none;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+}
+
+.material-icons {
+  font-family: "Material Symbols Outlined";
+  font-variation-settings: "FILL" 1;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, var(--color-checker) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--color-checker) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--color-checker) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--color-checker) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+img.checkerboard,
+canvas.checkerboard {
+  image-rendering: pixelated;
+}
+
+hr {
+  margin: 0;
+  border: none;
+  height: 1px;
+  background-color: var(--color-border);
+}
+
+input[type="text"] {
+  background-color: var(--color-back);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 16px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+input[type="text"]:focus {
+  border-color: var(--color-accent);
+}
+
+select {
+  background-color: var(--color-button);
+  border: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 16px;
+  padding: 6px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+select:hover {
+  background-color: var(--color-selected);
+  color: var(--color-light);
+}
+
+button {
+  background-color: var(--color-button);
+  border: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 16px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: var(--color-accent);
+  color: var(--color-light);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.quick-message {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-frame);
+  color: var(--color-light);
+  padding: 8px 24px;
+  z-index: 200;
+  box-shadow: 0 4px 16px #00000080;
+  pointer-events: none;
+  max-width: calc(100vw - 64px);
+}
