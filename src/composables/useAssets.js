@@ -2,7 +2,7 @@ import { reactive, ref, shallowRef } from "vue"
 import { zipSync } from "fflate"
 import { loadRenderer } from "../lib/renderer.js"
 import { parseZip, createImage, textOf, isImagePath } from "../lib/zip.js"
-import { getModelMatch, zipPrefix } from "../lib/models.js"
+import { getModelMatch, zipPrefix, zipPrefixChain } from "../lib/models.js"
 import { storage, save } from "../lib/storage.js"
 import { idbGet, idbKeys, idbPut, idbDelete } from "../lib/idb.js"
 import { proxy, fetchBuffer, fetchRemoteBuffer, remoteName } from "../lib/net.js"
@@ -467,7 +467,8 @@ async function getFileContent(file) {
 function assetsSource(prefix = "") {
   const parsed = jar.value
   const sources = parsed.assetsSources ??= {}
-  const candidates = path => prefix ? [prefix + path, path] : [path]
+  const chain = zipPrefixChain(prefix)
+  const candidates = path => chain.map(layer => layer + path)
   return sources[prefix] ??= {
     read: async filePath => {
       for (const candidate of candidates(filePath)) {
