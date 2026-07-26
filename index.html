@@ -4,12 +4,87 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Asset Browser - Minecraft Asset Browser</title>
-  <meta name="description" content="Browse, view, and download the Minecraft vanilla assets from any Java or Bedrock version, straight from your browser.">
+  <title>Asset Browser - Browse & Download the Minecraft Assets</title>
+  <meta name="description" content="Browse, view, and download the Minecraft vanilla assets from any Java or Bedrock version, straight from your browser. Textures, models, sounds, and more.">
+  <link rel="canonical" href="https://asset-browser.ewanhowell.com/">
+  <link rel="icon" type="image/webp" sizes="16x16" href="https://ewanhowell.com/assets/images/logo/logo_16.webp">
+  <link rel="icon" type="image/webp" sizes="32x32" href="https://ewanhowell.com/assets/images/logo/logo_32.webp">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://asset-browser.ewanhowell.com/">
+  <meta property="og:title" content="Asset Browser - Browse & Download the Minecraft Assets">
+  <meta property="og:description" content="Browse, view, and download the Minecraft vanilla assets from any Java or Bedrock version, straight from your browser. Textures, models, sounds, and more.">
+  <meta property="og:image" content="https://asset-browser.ewanhowell.com/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Asset Browser",
+      "url": "https://asset-browser.ewanhowell.com/",
+      "description": "Browse, view, and download the Minecraft vanilla assets from any Java or Bedrock version, straight from your browser. Textures, models, sounds, and more.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Web",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+      "author": { "@type": "Person", "name": "Ewan Howell", "url": "https://ewanhowell.com/" }
+    }
+  </script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block">
+  <style>
+    .splash {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px;
+      font-family: "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+      color: #848891;
+      text-align: center;
+      opacity: 0;
+      animation: splash-in 0.4s ease 0.5s forwards;
+    }
+
+    @keyframes splash-in {
+      to { opacity: 1; }
+    }
+
+    .splash h1 {
+      margin: 0;
+      font-size: 34px;
+      color: #f4f3ff;
+    }
+
+    .splash p {
+      margin: 0;
+      max-width: 560px;
+      line-height: 1.6;
+    }
+
+    .splash .spinner {
+      margin-top: 10px;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="splash">
+      <h1>Asset Browser</h1>
+      <p>Browse, view, and download the Minecraft vanilla assets from any version, straight from your browser: Java releases, snapshots and old beta and alpha builds, plus Bedrock releases and previews.</p>
+      <p>Preview textures, animated textures, block and item models, blockstates, and sounds inline, then download single files, or whole folders and selections as a zip.</p>
+      <svg class="spinner" viewBox="0 0 24 24" width="30" height="30" aria-label="Loading">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="#ffffff1f" stroke-width="3"/>
+        <path d="M12 2 a 10 10 0 0 1 10 10" fill="none" stroke="#3e90ff" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
