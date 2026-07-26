@@ -9,13 +9,14 @@ import { formatBytes, saveBlob, isBlankRender } from "../lib/util.js"
 import { buildLink, updateUrlParams } from "../lib/url.js"
 import { getModelMatch } from "../lib/models.js"
 import { inlineHtml, resolvePath, OPEN_MESSAGE } from "../lib/html.js"
+import { nbtToSnbt } from "../lib/nbt.js"
 import AnimatedTexture from "./AnimatedTexture.vue"
 
 const { viewer, openViewer, closeViewer } = useViewer()
 const { jar, version, zipUrl, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
 const { openMenu } = useContextMenu()
 
-const textExtensions = [".json", ".mcmeta", ".txt", ".cfg", ".properties", ".lang", ".glsl", ".vsh", ".fsh", ".html"]
+const textExtensions = [".json", ".mcmeta", ".txt", ".cfg", ".properties", ".lang", ".glsl", ".vsh", ".fsh", ".html", ".nbt"]
 
 const current = computed(() => viewer.files[viewer.index])
 
@@ -115,11 +116,21 @@ watch(current, async file => {
     if (!content) throw new Error("no content")
     size.value = content.length
     if (kind.value === "text") {
-      let text = textOf(content)
-      if (/\.(json|mcmeta)$/i.test(file.name)) {
+      let text
+      if (/\.nbt$/i.test(file.name)) {
         try {
-          text = JSON.stringify(JSON.parse(text), null, 2)
-        } catch {}
+          text = await nbtToSnbt(content)
+        } catch (e) {
+          text = `Unable to read NBT: ${e.message ?? e}`
+        }
+        if (file !== current.value) return
+      } else {
+        text = textOf(content)
+        if (/\.(json|mcmeta)$/i.test(file.name)) {
+          try {
+            text = JSON.stringify(JSON.parse(text), null, 2)
+          } catch {}
+        }
       }
       textContent.value = text
       if (isHtml.value) {

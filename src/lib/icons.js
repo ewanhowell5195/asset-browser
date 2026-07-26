@@ -22,6 +22,7 @@ export function getFileIcon(file, value) {
   if (file.includes(".mcmeta")) return "theaters"
   if (file.includes(".tga")) return "image"
   if (file.endsWith(".ogg") || file.endsWith(".fsb") || file.endsWith(".mus")) return "volume_up"
+  if (file.endsWith(".nbt")) return "account_tree"
   if (file.includes(".zip")) return "folder_zip"
   if (file.includes(".properties")) return "list_alt"
   if (file.includes(".txt")) return "description"
