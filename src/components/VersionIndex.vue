@@ -214,7 +214,8 @@ function recentContextMenu(id, event) {
   line-height: 1;
 }
 
-.version:hover {
+.version:hover,
+.version.context-open {
   background-color: var(--color-selected);
   color: var(--color-light);
 }

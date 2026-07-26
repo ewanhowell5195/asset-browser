@@ -325,7 +325,8 @@ header {
 }
 
 #file-viewer-nav i:hover,
-#file-viewer-actions i:hover {
+#file-viewer-actions i:hover,
+#file-viewer-actions a.context-open i {
   color: var(--color-light);
   background-color: var(--color-selected);
 }
@@ -354,7 +355,8 @@ header {
   padding: 6px 16px;
 }
 
-.download-button:hover {
+.download-button:hover,
+.download-button.context-open {
   background-color: var(--color-accent);
   color: var(--color-light);
   text-decoration: none;

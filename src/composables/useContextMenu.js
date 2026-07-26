@@ -1,6 +1,13 @@
 import { reactive } from "vue"
 
 const state = reactive({ open: false, x: 0, y: 0, items: [] })
+let trigger = null
+
+function setTrigger(el) {
+  trigger?.classList.remove("context-open")
+  trigger = el
+  trigger?.classList.add("context-open")
+}
 
 function openMenu(event, items) {
   event.preventDefault()
@@ -13,6 +20,7 @@ function openMenu(event, items) {
   }
   while (cleaned[cleaned.length - 1] === "_") cleaned.pop()
   if (!cleaned.length) return
+  setTrigger(event.currentTarget instanceof Element ? event.currentTarget : null)
   state.items = cleaned
   state.x = event.clientX
   state.y = event.clientY
@@ -21,6 +29,7 @@ function openMenu(event, items) {
 
 function closeMenu() {
   state.open = false
+  setTrigger(null)
 }
 
 export function useContextMenu() {

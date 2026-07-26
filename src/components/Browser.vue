@@ -598,6 +598,30 @@ function fileContextMenu(name, event) {
   ])
 }
 
+function breadcrumbContextMenu(index, event) {
+  const folder = path.value.slice(0, index + 1)
+  openMenu(event, [
+    {
+      name: "Copy Link",
+      icon: "link",
+      click: () => {
+        navigator.clipboard.writeText(absoluteLink({
+          version: version.value,
+          path: folder.join("/")
+        }))
+        quickMessage("Link copied")
+      }
+    },
+    {
+      name: "Download",
+      icon: "download",
+      click: () => folder.length
+        ? downloadFiles(folder.slice(0, -1), [folder[folder.length - 1]])
+        : downloadFiles([], Object.keys(tree.value))
+    }
+  ])
+}
+
 function resetSidebar() {
   if (confirm("Are you sure you want to reset the sidebar?")) {
     storage.savedFolders.length = 0
@@ -834,8 +858,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div id="breadcrumbs" ref="breadcrumbsEl">
-        <div @click="openFolder([])">{{ version }}</div>
-        <div v-for="(part, i) in path" @click="openFolder(path.slice(0, i + 1))">{{ part }}</div>
+        <div @click="openFolder([])" @contextmenu="breadcrumbContextMenu(-1, $event)">{{ version }}</div>
+        <div v-for="(part, i) in path" @click="openFolder(path.slice(0, i + 1))" @contextmenu="breadcrumbContextMenu(i, $event)">{{ part }}</div>
       </div>
       <div id="browser-search" :class="{ open: searchOpen }" :style="{ width: searchWidth }">
         <i class="material-icons" @click="toggleSearch">{{ searchOpen ? "close" : "search" }}</i>
@@ -1046,6 +1070,7 @@ onBeforeUnmount(() => {
 }
 
 #breadcrumbs > div:hover,
+#breadcrumbs > div.context-open,
 #breadcrumbs-home > div:hover {
   background-color: var(--color-selected);
   color: var(--color-light);
@@ -1194,7 +1219,8 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-#files > div > div:hover {
+#files > div > div:hover,
+#files > div > div.context-open {
   color: var(--color-light);
 }
 
