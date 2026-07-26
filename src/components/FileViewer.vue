@@ -9,8 +9,9 @@ import { formatBytes, saveBlob, isBlankRender } from "../lib/util.js"
 import { buildLink, updateUrlParams } from "../lib/url.js"
 import { getModelMatch } from "../lib/models.js"
 import { inlineHtml, resolvePath, OPEN_MESSAGE } from "../lib/html.js"
-import { nbtToSnbt } from "../lib/nbt.js"
+import { nbtToSnbt, readNbt } from "../lib/nbt.js"
 import AnimatedTexture from "./AnimatedTexture.vue"
+import DataTree from "./DataTree.vue"
 
 const { viewer, openViewer, closeViewer } = useViewer()
 const { jar, version, zipUrl, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
@@ -30,7 +31,11 @@ const kind = computed(() => {
 })
 
 const isHtml = computed(() => /\.html?$/i.test(current.value?.name ?? ""))
-const htmlTab = ref("preview")
+const isNbt = computed(() => /\.nbt$/i.test(current.value?.name ?? ""))
+const isJson = computed(() => /\.(json|mcmeta)$/i.test(current.value?.name ?? ""))
+const hasTabs = computed(() => kind.value === "text" && (isHtml.value || isNbt.value || isJson.value))
+const tab = ref("preview")
+const treeData = ref(undefined)
 const htmlDoc = ref(null)
 const htmlFrame = ref(null)
 
@@ -98,7 +103,8 @@ async function renderModelPreview(file) {
 watch(current, async file => {
   textContent.value = null
   htmlDoc.value = null
-  htmlTab.value = "preview"
+  treeData.value = undefined
+  tab.value = "preview"
   dimensions.value = null
   size.value = 0
   copied.value = false
@@ -117,18 +123,23 @@ watch(current, async file => {
     size.value = content.length
     if (kind.value === "text") {
       let text
-      if (/\.nbt$/i.test(file.name)) {
+      if (isNbt.value) {
         try {
-          text = await nbtToSnbt(content)
+          const [snbt, data] = await Promise.all([nbtToSnbt(content), readNbt(content)])
+          text = snbt
+          if (file !== current.value) return
+          treeData.value = data
         } catch (e) {
           text = `Unable to read NBT: ${e.message ?? e}`
+          if (file !== current.value) return
         }
-        if (file !== current.value) return
       } else {
         text = textOf(content)
-        if (/\.(json|mcmeta)$/i.test(file.name)) {
+        if (isJson.value) {
           try {
-            text = JSON.stringify(JSON.parse(text), null, 2)
+            const data = JSON.parse(text)
+            text = JSON.stringify(data, null, 2)
+            treeData.value = data
           } catch {}
         }
       }
@@ -277,12 +288,12 @@ addEventListener("keydown", e => {
           <span>{{ viewer.index + 1 }} / {{ viewer.files.length }}</span>
           <i class="material-icons" @click="move(1)">chevron_right</i>
         </div>
-        <div v-if="isHtml && kind === 'text'" id="file-viewer-tabs">
-          <div :class="{ active: htmlTab === 'preview' }" @click="htmlTab = 'preview'">Preview</div>
-          <div :class="{ active: htmlTab === 'code' }" @click="htmlTab = 'code'">Code</div>
+        <div v-if="hasTabs" id="file-viewer-tabs">
+          <div :class="{ active: tab === 'preview' }" @click="tab = 'preview'">Preview</div>
+          <div :class="{ active: tab === 'code' }" @click="tab = 'code'">Code</div>
         </div>
         <div id="file-viewer-actions">
-          <i v-if="kind === 'text' && textContent && !(isHtml && htmlTab === 'preview')" class="material-icons" :class="{ copied }" :title="copied ? 'Copied' : 'Copy'" @click="copyText">{{ copied ? "check" : "content_copy" }}</i>
+          <i v-if="kind === 'text' && textContent" class="material-icons" :class="{ copied }" :title="copied ? 'Copied' : 'Copy'" @click="copyText">{{ copied ? "check" : "content_copy" }}</i>
           <a :href="downloadUrl" title="Download" @click="downloadClick" @contextmenu="downloadContextMenu">
             <i class="material-icons">download</i>
           </a>
@@ -297,10 +308,13 @@ addEventListener("keydown", e => {
             <img v-else :src="image.src" class="checkerboard">
           </div>
         </template>
-        <iframe v-else-if="kind === 'text' && isHtml && htmlTab === 'preview' && htmlDoc" :key="current.path" id="file-viewer-html" ref="htmlFrame" :srcdoc="htmlDoc" sandbox="allow-scripts allow-popups"></iframe>
         <div v-else-if="kind === 'text'" id="file-viewer-text">
           <div v-show="modelPreview" id="model-preview" ref="modelPreviewEl"></div>
-          <pre>{{ textContent }}</pre>
+          <iframe v-if="isHtml && tab === 'preview' && htmlDoc" :key="current.path" id="file-viewer-html" ref="htmlFrame" :srcdoc="htmlDoc" sandbox="allow-scripts allow-popups"></iframe>
+          <div v-else-if="hasTabs && tab === 'preview' && treeData !== undefined" id="file-viewer-tree">
+            <DataTree :value="treeData" />
+          </div>
+          <pre v-else>{{ textContent }}</pre>
         </div>
         <audio v-else-if="kind === 'audio' && audioUrl" :src="audioUrl" controls autoplay></audio>
         <div v-else class="file-viewer-message">
@@ -472,9 +486,17 @@ header {
   /* the ua stylesheet sets an explicit 300px, so stretch alone won't widen it */
   width: 100%;
   /* an iframe has no intrinsic height, so flex alone would collapse it */
-  height: calc(100vh - 200px);
+  flex: 1;
+  min-height: 400px;
   border: none;
   background-color: #fff;
+}
+
+#file-viewer-tree {
+  align-self: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 #file-viewer-text {

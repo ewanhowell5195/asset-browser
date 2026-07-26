@@ -19,13 +19,85 @@ async function inflate(bytes, format) {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
-export async function nbtToSnbt(input, indent = "  ") {
-  let bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
-  if (bytes.length > 1) {
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = await inflate(bytes, "gzip")
-    else if (bytes[0] === 0x78 && ((bytes[0] << 8) | bytes[1]) % 31 === 0) bytes = await inflate(bytes, "deflate")
+async function decompress(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
+  if (bytes.length < 2) return bytes
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return inflate(bytes, "gzip")
+  if (bytes[0] === 0x78 && ((bytes[0] << 8) | bytes[1]) % 31 === 0) return inflate(bytes, "deflate")
+  return bytes
+}
+
+export async function readNbt(input) {
+  const bytes = await decompress(input)
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let o = 0
+
+  function string() {
+    const len = dv.getUint16(o)
+    o += 2
+    const value = td.decode(bytes.subarray(o, o + len))
+    o += len
+    return value
   }
 
+  function payload(type) {
+    switch (type) {
+      case TAG.BYTE: return dv.getInt8(o++)
+      case TAG.SHORT: { const v = dv.getInt16(o); o += 2; return v }
+      case TAG.INT: { const v = dv.getInt32(o); o += 4; return v }
+      case TAG.LONG: { const v = dv.getBigInt64(o); o += 8; return v }
+      case TAG.FLOAT: { const v = dv.getFloat32(o); o += 4; return v }
+      case TAG.DOUBLE: { const v = dv.getFloat64(o); o += 8; return v }
+      case TAG.STRING: return string()
+      case TAG.BYTE_ARRAY: {
+        const len = dv.getInt32(o)
+        o += 4
+        const v = new Int8Array(bytes.slice(o, o + len).buffer)
+        o += len
+        return v
+      }
+      case TAG.INT_ARRAY: {
+        const len = dv.getInt32(o)
+        o += 4
+        const v = new Int32Array(len)
+        for (let i = 0; i < len; i++) { v[i] = dv.getInt32(o); o += 4 }
+        return v
+      }
+      case TAG.LONG_ARRAY: {
+        const len = dv.getInt32(o)
+        o += 4
+        const v = new BigInt64Array(len)
+        for (let i = 0; i < len; i++) { v[i] = dv.getBigInt64(o); o += 8 }
+        return v
+      }
+      case TAG.LIST: {
+        const elementType = dv.getUint8(o++)
+        const len = dv.getInt32(o)
+        o += 4
+        const v = new Array(len)
+        for (let i = 0; i < len; i++) v[i] = payload(elementType)
+        return v
+      }
+      case TAG.COMPOUND: {
+        const v = {}
+        for (;;) {
+          const entryType = dv.getUint8(o++)
+          if (entryType === TAG.END) return v
+          v[string()] = payload(entryType)
+        }
+      }
+      default: throw new Error(`Unknown NBT tag type ${type} at byte ${o - 1}`)
+    }
+  }
+
+  const rootType = dv.getUint8(o++)
+  if (rootType !== TAG.COMPOUND) throw new Error(`NBT root is tag type ${rootType}, expected a compound`)
+  string()
+  return payload(TAG.COMPOUND)
+}
+
+export async function nbtToSnbt(input, indent = "  ") {
+  const bytes = await decompress(input)
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let o = 0
 
