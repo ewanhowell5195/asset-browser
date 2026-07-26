@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue"
 import { loadRenderer } from "../lib/renderer.js"
 import { useAssets } from "../composables/useAssets.js"
+import { zipPrefix } from "../lib/models.js"
 
 const props = defineProps({
   path: { type: String, required: true }
@@ -14,7 +15,12 @@ let player
 onMounted(async () => {
   try {
     const { renderTexture } = await loadRenderer()
-    player = await renderTexture({ texture: props.path, assets: await preparedAssets(), animated: true })
+    const prefix = zipPrefix(props.path)
+    player = await renderTexture({
+      texture: props.path.slice(prefix.length),
+      assets: await preparedAssets(prefix),
+      animated: true
+    })
   } catch (e) {
     console.error(e)
     return

@@ -2,7 +2,7 @@ import { reactive, ref, shallowRef } from "vue"
 import { zipSync } from "fflate"
 import { loadRenderer } from "../lib/renderer.js"
 import { parseZip, createImage, textOf, isImagePath } from "../lib/zip.js"
-import { getModelMatch } from "../lib/models.js"
+import { getModelMatch, zipPrefix } from "../lib/models.js"
 import { storage, save } from "../lib/storage.js"
 import { idbGet, idbKeys, idbPut, idbDelete } from "../lib/idb.js"
 import { proxy, fetchBuffer, fetchRemoteBuffer, remoteName } from "../lib/net.js"
@@ -461,42 +461,57 @@ async function getFileContent(file) {
   return data.content
 }
 
-function assetsSource() {
+// a nested pack overrides what it ships and inherits the rest, so its own files
+// are tried first and the containing jar answers everything else: a pack that
+// only reskins a texture still resolves its vanilla parents
+function assetsSource(prefix = "") {
   const parsed = jar.value
-  parsed.assetsSource ??= {
+  const sources = parsed.assetsSources ??= {}
+  const candidates = path => prefix ? [prefix + path, path] : [path]
+  return sources[prefix] ??= {
     read: async filePath => {
-      const data = parsed.files[filePath] ?? parsed.zips?.[filePath]
-      if (data) {
+      for (const candidate of candidates(filePath)) {
+        const data = parsed.files[candidate] ?? parsed.zips?.[candidate]
+        if (!data) continue
         if (!data.content && data.object) {
           await fetchObject(data)
         }
         return data.content
       }
       if (filePath.endsWith(".mcmeta")) {
-        const base = filePath.slice(0, -7)
-        if (parsed.files[base] && hasAnimation(base) && parsed.files[base].animation) {
-          return JSON.stringify(parsed.files[base].animation)
+        for (const base of candidates(filePath.slice(0, -7))) {
+          if (parsed.files[base] && hasAnimation(base) && parsed.files[base].animation) {
+            return JSON.stringify(parsed.files[base].animation)
+          }
         }
       }
       return null
     },
     list: dir => {
-      let current = tree.value
-      for (const part of dir.split("/")) {
-        if (!part) continue
-        current = current?.[part]
-        if (!current || typeof current === "string") return []
+      const names = new Set()
+      for (const root of candidates(dir)) {
+        let current = tree.value
+        for (const part of root.split("/")) {
+          if (!part) continue
+          current = current?.[part]
+          if (!current || typeof current === "string") break
+        }
+        if (!current || typeof current === "string") continue
+        for (const name of Object.keys(current)) {
+          if (typeof current[name] === "string") names.add(name)
+        }
       }
-      return Object.keys(current).filter(k => typeof current[k] === "string")
+      return Array.from(names)
     }
   }
-  return parsed.assetsSource
 }
 
-async function preparedAssets() {
+function preparedAssets(prefix = "") {
   const parsed = jar.value
-  const { prepareAssets } = await loadRenderer()
-  return parsed.prepared ??= await prepareAssets(assetsSource())
+  const prepared = parsed.prepared ??= {}
+  // the promise is memoised, not its result: two tiles asking at once would
+  // otherwise both prepare
+  return prepared[prefix] ??= loadRenderer().then(({ prepareAssets }) => prepareAssets(assetsSource(prefix)))
 }
 
 function renderArgs() {
@@ -511,7 +526,7 @@ async function renderModelPlayer(path, args) {
   const match = getModelMatch(path)
   if (!match) return null
   const { renderBlock, renderItem, renderModel, DISPLAYS } = await loadRenderer()
-  args = { ...renderArgs(), ...args, assets: await preparedAssets() }
+  args = { ...renderArgs(), ...args, assets: await preparedAssets(zipPrefix(path)) }
   if (match.type === "block") {
     args.display ??= { type: "fallback", rotateFlat: true, ...DISPLAYS.block }
     return renderBlock({ ...args, id: match.id })
@@ -544,7 +559,9 @@ function renderModelThumbnail(path) {
   if (cache.has(path)) {
     return { path, jar: parsed, cancelled: false, started: true, promise: Promise.resolve(cache.get(path)) }
   }
-  if (poolActive()) {
+  // the pool preps assets straight from the jar buffer, which has no view of a
+  // nested pack's contents, so those render on the main thread instead
+  if (poolActive() && !zipPrefix(path)) {
     const job = submitThumbnail(path)
     job.jar = parsed
     job.promise = job.promise.then(async thumb => {
