@@ -51,8 +51,11 @@ function followFrameLink(event) {
 addEventListener("message", followFrameLink)
 onBeforeUnmount(() => removeEventListener("message", followFrameLink))
 
+const copied = ref(false)
 const loading = ref(false)
 const textContent = ref(null)
+
+let copiedTimeout
 const audioUrl = ref(null)
 const size = ref(0)
 const dimensions = ref(null)
@@ -193,8 +196,6 @@ function downloadContextMenu(event) {
   ])
 }
 
-const copied = ref(false)
-let copiedTimeout
 
 function copyText() {
   navigator.clipboard.writeText(textContent.value ?? "")
