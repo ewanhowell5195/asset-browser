@@ -8,9 +8,10 @@ import { basename, dirname, extname } from "../lib/path.js"
 import { formatBytes, saveBlob, isBlankRender } from "../lib/util.js"
 import { buildLink, updateUrlParams } from "../lib/url.js"
 import { getModelMatch } from "../lib/models.js"
+import { inlineHtml, resolvePath, OPEN_MESSAGE } from "../lib/html.js"
 import AnimatedTexture from "./AnimatedTexture.vue"
 
-const { viewer, closeViewer } = useViewer()
+const { viewer, openViewer, closeViewer } = useViewer()
 const { jar, version, zipUrl, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
 const { openMenu } = useContextMenu()
 
@@ -26,6 +27,29 @@ const kind = computed(() => {
   if (textExtensions.includes(ext) || !ext) return "text"
   return "none"
 })
+
+const isHtml = computed(() => /\.html?$/i.test(current.value?.name ?? ""))
+const htmlTab = ref("preview")
+const htmlDoc = ref(null)
+const htmlFrame = ref(null)
+
+// the frame is sandboxed into an opaque origin, so a link it can't follow comes
+// back as a message and the viewer moves to that file instead
+function followFrameLink(event) {
+  if (event.source !== htmlFrame.value?.contentWindow) return
+  if (event.data?.type !== OPEN_MESSAGE || !current.value) return
+  const dir = dirname(current.value.path)
+  const path = resolvePath(dir === "." ? "" : dir, event.data.href)
+  if (!path) return
+  if (!jar.value?.files[path]) {
+    quickMessage(`${basename(path)} is not in this pack`)
+    return
+  }
+  openViewer([{ name: basename(path), path }])
+}
+
+addEventListener("message", followFrameLink)
+onBeforeUnmount(() => removeEventListener("message", followFrameLink))
 
 const loading = ref(false)
 const textContent = ref(null)
@@ -69,6 +93,8 @@ async function renderModelPreview(file) {
 
 watch(current, async file => {
   textContent.value = null
+  htmlDoc.value = null
+  htmlTab.value = "preview"
   dimensions.value = null
   size.value = 0
   copied.value = false
@@ -93,6 +119,16 @@ watch(current, async file => {
         } catch {}
       }
       textContent.value = text
+      if (isHtml.value) {
+        const dir = dirname(file.path)
+        inlineHtml(text, dir === "." ? "" : dir, getFileContent)
+          .then(doc => {
+            if (file === current.value) htmlDoc.value = doc
+          })
+          .catch(() => {
+            if (file === current.value) htmlDoc.value = text
+          })
+      }
       renderModelPreview(file)
     } else if (kind.value === "audio") {
       audioUrl.value = URL.createObjectURL(new Blob([content], { type: "audio/ogg" }))
@@ -229,8 +265,12 @@ addEventListener("keydown", e => {
           <span>{{ viewer.index + 1 }} / {{ viewer.files.length }}</span>
           <i class="material-icons" @click="move(1)">chevron_right</i>
         </div>
+        <div v-if="isHtml && kind === 'text'" id="file-viewer-tabs">
+          <div :class="{ active: htmlTab === 'preview' }" @click="htmlTab = 'preview'">Preview</div>
+          <div :class="{ active: htmlTab === 'code' }" @click="htmlTab = 'code'">Code</div>
+        </div>
         <div id="file-viewer-actions">
-          <i v-if="kind === 'text' && textContent" class="material-icons" :class="{ copied }" :title="copied ? 'Copied' : 'Copy'" @click="copyText">{{ copied ? "check" : "content_copy" }}</i>
+          <i v-if="kind === 'text' && textContent && !(isHtml && htmlTab === 'preview')" class="material-icons" :class="{ copied }" :title="copied ? 'Copied' : 'Copy'" @click="copyText">{{ copied ? "check" : "content_copy" }}</i>
           <a :href="downloadUrl" title="Download" @click="downloadClick" @contextmenu="downloadContextMenu">
             <i class="material-icons">download</i>
           </a>
@@ -245,6 +285,7 @@ addEventListener("keydown", e => {
             <img v-else :src="image.src" class="checkerboard">
           </div>
         </template>
+        <iframe v-else-if="kind === 'text' && isHtml && htmlTab === 'preview' && htmlDoc" :key="current.path" id="file-viewer-html" ref="htmlFrame" :srcdoc="htmlDoc" sandbox="allow-scripts allow-popups"></iframe>
         <div v-else-if="kind === 'text'" id="file-viewer-text">
           <div v-show="modelPreview" id="model-preview" ref="modelPreviewEl"></div>
           <pre>{{ textContent }}</pre>
@@ -391,6 +432,37 @@ header {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+#file-viewer-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+#file-viewer-tabs > div {
+  padding: 4px 12px;
+  cursor: pointer;
+  color: var(--color-text);
+  background-color: var(--color-button);
+}
+
+#file-viewer-tabs > div:hover {
+  color: var(--color-light);
+}
+
+#file-viewer-tabs > div.active {
+  color: var(--color-light);
+  background-color: var(--color-selected);
+}
+
+#file-viewer-html {
+  align-self: stretch;
+  /* the ua stylesheet sets an explicit 300px, so stretch alone won't widen it */
+  width: 100%;
+  /* an iframe has no intrinsic height, so flex alone would collapse it */
+  height: calc(100vh - 200px);
+  border: none;
+  background-color: #fff;
 }
 
 #file-viewer-text {
