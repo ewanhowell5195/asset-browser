@@ -116,6 +116,20 @@ async function reconcileCached() {
   save()
 }
 
+// version ids are plain strings, remote zips are { zip, name }: old entries stay
+// readable and the two never collide
+function pushRecent(match, entry) {
+  const index = storage.recents.findIndex(match)
+  if (index !== -1) {
+    storage.recents.splice(index, 1)
+  }
+  storage.recents.unshift(entry)
+  if (storage.recents.length > 20) {
+    storage.recents.length = 20
+  }
+  save()
+}
+
 function touchCached(id) {
   const entry = storage.cached.find(e => e.id === id)
   if (!entry) return
@@ -275,6 +289,7 @@ async function loadRemoteZip(url, startPath = []) {
     if (!Object.keys(parsed.files).length) {
       throw new Error("It may be corrupted")
     }
+    pushRecent(e => e?.zip === url, { zip: url, name })
     zipUrl.value = url
     version.value = name
     initialPath.value = startPath
@@ -319,14 +334,7 @@ async function loadVersion(id, startPath = []) {
       }
     }
     const built = buildTree(parsed)
-    if (storage.recents.includes(id)) {
-      storage.recents.splice(storage.recents.indexOf(id), 1)
-    }
-    storage.recents.unshift(id)
-    if (storage.recents.length > 20) {
-      storage.recents.length = 20
-    }
-    save()
+    pushRecent(e => e === id, id)
     zipUrl.value = null
     version.value = id
     initialPath.value = startPath

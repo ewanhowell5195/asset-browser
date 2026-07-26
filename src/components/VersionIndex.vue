@@ -3,10 +3,10 @@ import { computed, reactive, ref, watch } from "vue"
 import { useAssets } from "../composables/useAssets.js"
 import { useContextMenu } from "../composables/useContextMenu.js"
 import { storage, save } from "../lib/storage.js"
-import { getVersionIcon } from "../lib/icons.js"
+import { getVersionIcon, iconHTML } from "../lib/icons.js"
 import { formatBytes } from "../lib/util.js"
 
-const { manifest, loadManifest, loadVersion, toggleObjects, deleteCachedVersion } = useAssets()
+const { manifest, loadManifest, loadVersion, loadRemoteZip, toggleObjects, deleteCachedVersion } = useAssets()
 const { openMenu } = useContextMenu()
 
 const type = ref(storage.type ?? "release")
@@ -22,7 +22,14 @@ watch(() => manifest.loaded, () => {
 const typeVersions = computed(() => manifest.versions.filter(e => e.type === type.value))
 
 const filteredCached = computed(() => storage.cached.filter(e => e.id.toLowerCase().includes(versionSearch.value)))
-const filteredRecents = computed(() => storage.recents.filter(id => id.toLowerCase().includes(versionSearch.value)))
+const filteredRecents = computed(() => storage.recents
+  .map(entry => typeof entry === "string" ? { id: entry, label: entry } : { zip: entry.zip, label: entry.name })
+  .filter(entry => entry.label.toLowerCase().includes(versionSearch.value)))
+
+function openRecent(entry) {
+  if (entry.zip) loadRemoteZip(entry.zip)
+  else loadVersion(entry.id)
+}
 
 function load() {
   const id = selectedVersions[type.value]
@@ -48,20 +55,29 @@ function cachedContextMenu(entry, event) {
   ])
 }
 
-function recentContextMenu(id, event) {
+function recentContextMenu(entry, event) {
   openMenu(event, [
     {
       name: "Load",
       icon: "folder_open",
-      click: () => loadVersion(id)
+      click: () => openRecent(entry)
+    },
+    {
+      name: "Copy Link",
+      icon: "link",
+      condition: !!entry.zip,
+      click: () => navigator.clipboard.writeText(entry.zip)
     },
     "_",
     {
       name: "Remove from Recents",
       icon: "delete",
       click: () => {
-        storage.recents.splice(storage.recents.indexOf(id), 1)
-        save()
+        const index = storage.recents.findIndex(e => entry.zip ? e?.zip === entry.zip : e === entry.id)
+        if (index !== -1) {
+          storage.recents.splice(index, 1)
+          save()
+        }
       }
     }
   ])
@@ -114,9 +130,9 @@ function recentContextMenu(id, event) {
             <div class="index-heading">Recently Viewed</div>
             <div class="version-list">
               <template v-if="filteredRecents.length">
-                <div v-for="id in filteredRecents" class="version" @click="loadVersion(id)" @contextmenu="recentContextMenu(id, $event)">
-                  <span v-html="getVersionIcon(id)"></span>
-                  <span>{{ id }}</span>
+                <div v-for="entry in filteredRecents" class="version" :title="entry.zip" @click="openRecent(entry)" @contextmenu="recentContextMenu(entry, $event)">
+                  <span v-html="entry.zip ? iconHTML('folder_zip') : getVersionIcon(entry.id)"></span>
+                  <span>{{ entry.label }}</span>
                 </div>
               </template>
               <div v-else class="no-results">No recently viewed versions</div>
