@@ -23,6 +23,7 @@ export const storage = reactive(JSON.parse(localStorage.getItem("asset_browser")
 storage.recents ??= []
 storage.cached ??= []
 storage.savedFolders ??= defaultSavedFolders()
+storage.objects ??= true
 
 export function save() {
   localStorage.setItem("asset_browser", JSON.stringify(storage))
