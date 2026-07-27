@@ -18,6 +18,10 @@ export function zipPrefixChain(prefix) {
   return chain
 }
 
+const STRUCTURE_RE = /^data\/[^/]+\/structures?\/.+\.nbt$/i
+
+export const isStructurePath = path => STRUCTURE_RE.test(path.slice(zipPrefix(path).length))
+
 export function getModelMatch(path) {
   path = path.slice(zipPrefix(path).length)
   const blockstate = path.match(/^assets\/([^/]+)\/blockstates\/([^/]+)\.json$/)

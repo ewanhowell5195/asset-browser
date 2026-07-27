@@ -187,6 +187,7 @@ async function getVersionJar(id) {
   loadingMessage.value = `Loading ${id}…`
   await new Promise(resolve => setTimeout(resolve))
   const parsed = await parseZip(buffer)
+  parsed.buffer = buffer
   if (isBedrockId(id)) {
     const old = parsed.files
     parsed.files = {}
@@ -286,6 +287,7 @@ async function loadRemoteZip(url, startPath = []) {
     loadingMessage.value = `Loading ${name}…`
     await new Promise(resolve => setTimeout(resolve))
     const parsed = await parseZip(buffer)
+    parsed.buffer = buffer
     if (!Object.keys(parsed.files).length) {
       throw new Error("It may be corrupted")
     }

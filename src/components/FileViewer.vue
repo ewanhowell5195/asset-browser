@@ -7,11 +7,12 @@ import { textOf } from "../lib/zip.js"
 import { basename, dirname, extname } from "../lib/path.js"
 import { formatBytes, saveBlob, isBlankRender } from "../lib/util.js"
 import { buildLink, updateUrlParams } from "../lib/url.js"
-import { getModelMatch } from "../lib/models.js"
+import { getModelMatch, isStructurePath } from "../lib/models.js"
 import { inlineHtml, resolvePath, OPEN_MESSAGE } from "../lib/html.js"
 import { nbtToSnbt, readNbt } from "../lib/nbt.js"
 import AnimatedTexture from "./AnimatedTexture.vue"
 import DataTree from "./DataTree.vue"
+import StructureView from "./StructureView.vue"
 
 const { viewer, openViewer, closeViewer } = useViewer()
 const { jar, version, zipUrl, hasAnimation, getFileContent, renderModelPlayer, quickMessage } = useAssets()
@@ -33,7 +34,17 @@ const kind = computed(() => {
 const isHtml = computed(() => /\.html?$/i.test(current.value?.name ?? ""))
 const isNbt = computed(() => /\.nbt$/i.test(current.value?.name ?? ""))
 const isJson = computed(() => /\.(json|mcmeta)$/i.test(current.value?.name ?? ""))
-const hasTabs = computed(() => kind.value === "text" && (isHtml.value || isNbt.value || isJson.value))
+const isStructure = computed(() => !!current.value && isStructurePath(current.value.path))
+
+const tabs = computed(() => {
+  if (kind.value !== "text") return []
+  const out = []
+  if (isStructure.value) out.push({ id: "structure", label: "Structure" })
+  if (isHtml.value || isNbt.value || isJson.value) out.push({ id: "preview", label: "Preview" }, { id: "code", label: "Code" })
+  return out.length > 1 ? out : []
+})
+
+const hasTabs = computed(() => tabs.value.length > 0)
 const tab = ref("preview")
 const treeData = ref(undefined)
 const htmlDoc = ref(null)
@@ -104,7 +115,7 @@ watch(current, async file => {
   textContent.value = null
   htmlDoc.value = null
   treeData.value = undefined
-  tab.value = "preview"
+  tab.value = isStructurePath(file?.path ?? "") ? "structure" : "preview"
   dimensions.value = null
   size.value = 0
   copied.value = false
@@ -289,8 +300,7 @@ addEventListener("keydown", e => {
           <i class="material-icons" @click="move(1)">chevron_right</i>
         </div>
         <div v-if="hasTabs" id="file-viewer-tabs">
-          <div :class="{ active: tab === 'preview' }" @click="tab = 'preview'">Preview</div>
-          <div :class="{ active: tab === 'code' }" @click="tab = 'code'">Code</div>
+          <div v-for="entry in tabs" :key="entry.id" :class="{ active: tab === entry.id }" @click="tab = entry.id">{{ entry.label }}</div>
         </div>
         <div id="file-viewer-actions">
           <i v-if="kind === 'text' && textContent" class="material-icons" :class="{ copied }" :title="copied ? 'Copied' : 'Copy'" @click="copyText">{{ copied ? "check" : "content_copy" }}</i>
@@ -310,11 +320,18 @@ addEventListener("keydown", e => {
         </template>
         <div v-else-if="kind === 'text'" id="file-viewer-text">
           <div v-show="modelPreview" id="model-preview" ref="modelPreviewEl"></div>
-          <iframe v-if="isHtml && tab === 'preview' && htmlDoc" :key="current.path" id="file-viewer-html" ref="htmlFrame" :srcdoc="htmlDoc" sandbox="allow-scripts allow-popups"></iframe>
-          <div v-else-if="hasTabs && tab === 'preview' && treeData !== undefined" id="file-viewer-tree">
-            <DataTree :value="treeData" />
+          <!-- kept mounted and laid out while the tab is away: unmounting reloads
+               the viewer, and display:none costs it its webgl context -->
+          <div v-if="isStructure" class="structure-host" :class="{ offstage: tab !== 'structure' }">
+            <StructureView :path="current.path" />
           </div>
-          <pre v-else>{{ textContent }}</pre>
+          <template v-if="tab !== 'structure'">
+            <iframe v-if="isHtml && tab === 'preview' && htmlDoc" :key="current.path" id="file-viewer-html" ref="htmlFrame" :srcdoc="htmlDoc" sandbox="allow-scripts allow-popups"></iframe>
+            <div v-else-if="hasTabs && tab === 'preview' && treeData !== undefined" id="file-viewer-tree">
+              <DataTree :value="treeData" />
+            </div>
+            <pre v-else>{{ textContent }}</pre>
+          </template>
         </div>
         <audio v-else-if="kind === 'audio' && audioUrl" :src="audioUrl" controls autoplay></audio>
         <div v-else class="file-viewer-message">
@@ -496,10 +513,25 @@ header {
   align-self: stretch;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+}
+
+.structure-host {
+  align-self: stretch;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.structure-host.offstage {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 #file-viewer-text {
+  position: relative;
   align-self: stretch;
   flex: 1;
   display: flex;

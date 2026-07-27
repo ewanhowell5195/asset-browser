@@ -1,13 +1,11 @@
 <script setup>
-import { computed, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 const props = defineProps({
   value: { type: null, required: true }
 })
 
 const collapsed = ref(new Set())
-
-watch(() => props.value, () => collapsed.value = new Set())
 
 const isTypedArray = v => ArrayBuffer.isView(v) && !(v instanceof DataView)
 const isLeaf = v => v === null || typeof v !== "object" || isTypedArray(v)
@@ -103,17 +101,47 @@ function collapseAll() {
   collapsed.value = next
 }
 
+const ROW = 22
+const OVERSCAN = 12
+
+const scroller = ref(null)
+const scrollTop = ref(0)
+const viewport = ref(0)
+
+const first = computed(() => Math.max(0, Math.floor(scrollTop.value / ROW) - OVERSCAN))
+const last = computed(() => Math.min(rows.value.length, Math.ceil((scrollTop.value + viewport.value) / ROW) + OVERSCAN))
+const visible = computed(() => rows.value.slice(first.value, last.value))
+
+function onScroll() {
+  scrollTop.value = scroller.value?.scrollTop ?? 0
+}
+
+let observer
+onMounted(() => {
+  viewport.value = scroller.value?.clientHeight ?? 0
+  observer = new ResizeObserver(() => viewport.value = scroller.value?.clientHeight ?? 0)
+  observer.observe(scroller.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
+
+watch(() => props.value, () => {
+  collapsed.value = new Set()
+  scrollTop.value = 0
+  if (scroller.value) scroller.value.scrollTop = 0
+})
+
 defineExpose({ collapseAll, expandAll: () => collapsed.value = new Set() })
 </script>
 
 <template>
-  <div class="data-tree">
+  <div class="data-tree" ref="scroller" @scroll.passive="onScroll">
+    <div class="data-rows" :style="{ height: rows.length * ROW + 'px' }">
     <div
-      v-for="row in rows"
+      v-for="(row, i) in visible"
       :key="row.path"
       class="data-row"
-      :class="{ container: row.mark !== undefined && !row.empty }"
-      :style="{ paddingLeft: 4 + row.depth * 14 + 'px' }"
+      :class="{ container: row.mark !== undefined && !row.empty, odd: (first + i) % 2 }"
+      :style="{ top: (first + i) * ROW + 'px', paddingLeft: 4 + row.depth * 14 + 'px' }"
       @click="toggle(row)"
     >
       <i v-if="row.mark !== undefined && !row.empty" class="material-icons chevron">{{ row.open ? "expand_more" : "chevron_right" }}</i>
@@ -122,6 +150,7 @@ defineExpose({ collapseAll, expandAll: () => collapsed.value = new Set() })
       <span v-if="row.mark !== undefined" class="data-mark">{{ row.empty ? (row.mark === "[0]" ? "[]" : "{}") : row.mark }}</span>
       <span v-else class="data-value"><span v-for="(p, i) in row.parts" :key="i" :class="p.cls">{{ p.text }}</span></span>
     </div>
+    </div>
   </div>
 </template>
 
@@ -129,18 +158,29 @@ defineExpose({ collapseAll, expandAll: () => collapsed.value = new Set() })
 .data-tree {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 13px;
-  line-height: 1.5;
-  padding: 8px 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.data-rows {
+  position: relative;
 }
 
 .data-row {
+  position: absolute;
+  left: 0;
+  height: 22px;
+  width: max-content;
+  min-width: 100%;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  padding: 1px 8px 1px 0;
+  padding-right: 8px;
+  white-space: nowrap;
 }
 
-.data-row:nth-child(even) {
+.data-row.odd {
   background-color: #ffffff08;
 }
 
@@ -173,7 +213,7 @@ defineExpose({ collapseAll, expandAll: () => collapsed.value = new Set() })
 }
 
 .data-value {
-  overflow-wrap: anywhere;
+  flex-shrink: 0;
 }
 
 .data-mark {
