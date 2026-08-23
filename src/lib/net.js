@@ -1,12 +1,15 @@
 const CORS = "https://cors.ewanhowell.com/"
 const CORS_MC = "https://corsmc.ewanhowell.com/"
 
-// mojang goes through the minecraft proxy, which caches on its own box. github
-// stays on the worker, because bedrock archives come from one Oracle egress IP
-// there and github rate limits per IP, while the worker spreads over many
-const MOJANG = /^https:\/\/(resources\.download\.minecraft\.net|piston-(data|meta)\.mojang\.com)\//
+// the piston hosts send ACAO: *, so jars come straight from Mojang. the assets
+// host sits on its own storage account with no such header, and goes through the
+// minecraft proxy, which caches on its own box. github stays on the worker,
+// because bedrock archives come from one Oracle egress IP there and github rate
+// limits per IP, while the worker spreads over many
+const DIRECT = /^https:\/\/piston-(data|meta)\.mojang\.com\//
+const MOJANG = /^https:\/\/resources\.download\.minecraft\.net\//
 
-export const proxy = url => (MOJANG.test(url) ? CORS_MC : CORS) + url
+export const proxy = url => DIRECT.test(url) ? url : (MOJANG.test(url) ? CORS_MC : CORS) + url
 
 export const isRemote = url => /^https?:\/\//i.test(url)
 
