@@ -902,7 +902,7 @@ onBeforeUnmount(() => {
             </i>
           </template>
           <template v-else-if="file.endsWith('.png') && jar.files[value].image && hasAnimation(value)">
-            <AnimatedTexture :path="value" />
+            <AnimatedTexture :key="value" :path="value" />
           </template>
           <template v-else-if="(file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg')) && jar.files[value].image">
             <div>
