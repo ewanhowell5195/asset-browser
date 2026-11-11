@@ -1,9 +1,7 @@
 // grid thumbnails render here so a folder of models doesn't lock up scrolling.
-// each worker preps the version jar itself (straight from the IndexedDB copy
-// where it can) and keeps the players it built, painting them into canvases the
-// page hands over with transferControlToOffscreen
+// each worker preps the version jar itself and keeps the players it built,
+// painting them into canvases the page hands over with transferControlToOffscreen
 import { loadRenderer } from "./renderer.js"
-import { idbGet } from "./idb.js"
 import { renderThumbnailModel } from "./thumbnailRender.js"
 
 let lib = null
@@ -40,9 +38,7 @@ self.onmessage = async e => {
       lib = await loadRenderer()
       if (m.clockStart != null) lib.configure({ clockStart: m.clockStart })
       version = m.version
-      const buffer = (await idbGet("jars", m.id).catch(() => null))?.data ?? m.buffer
-      if (!buffer) throw new Error(`no cached jar for ${m.id}`)
-      assets = await lib.prepareAssets(buffer)
+      assets = await lib.prepareAssets(m.buffer)
       self.postMessage({ type: "init" })
     } else if (m.type === "render") {
       // there's no DOM here for the library's own offscreen pausing to watch,

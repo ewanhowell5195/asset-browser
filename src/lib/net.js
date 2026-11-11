@@ -52,10 +52,6 @@ export async function fetchRemoteBuffer(url, onProgress) {
   return readBody(await openRemote(url), onProgress)
 }
 
-export async function fetchBuffer(url, onProgress) {
-  return readBody(await fetch(url), onProgress)
-}
-
 async function readBody(res, onProgress) {
   if (!res.ok) {
     throw new Error(`Failed to download (${res.status})`)

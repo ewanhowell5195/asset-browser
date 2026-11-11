@@ -1,18 +1,18 @@
-import { reactive, ref, shallowRef } from "vue"
+import { markRaw, reactive, ref, shallowRef } from "vue"
 import { zipSync } from "fflate"
+import { writeZip } from "minecraft-asset-loader"
 import { loadRenderer } from "../lib/renderer.js"
+import { javaAssets, bedrockAssets } from "../lib/loader.js"
 import { parseZip, createImage, textOf, isImagePath } from "../lib/zip.js"
 import { getModelMatch, zipPrefix, zipPrefixChain } from "../lib/models.js"
 import { storage, save } from "../lib/storage.js"
-import { idbGet, idbKeys, idbPut, idbDelete } from "../lib/idb.js"
-import { proxy, fetchBuffer, fetchRemoteBuffer, remoteName } from "../lib/net.js"
+import { fetchRemoteBuffer, remoteName } from "../lib/net.js"
 import { titleCase, saveBlob, isBlankRender } from "../lib/util.js"
 import { poolActive, startThumbnailPool, stopThumbnailPool, submitThumbnail } from "../lib/thumbnails.js"
 import { basename } from "../lib/path.js"
 import { updateUrlParams } from "../lib/url.js"
 
 const manifest = reactive({
-  latest: {},
   types: {
     release: "Java Release",
     snapshot: "Java Snapshot",
@@ -39,7 +39,7 @@ const toast = ref(null)
 
 let loadedJars = {}
 let toastTimeout
-let freshBuffer = null
+const versionObjects = new Map()
 
 function quickMessage(message) {
   toast.value = message
@@ -51,31 +51,24 @@ async function loadManifest() {
   if (manifest.loaded) return
   manifest.error = null
   try {
-    const [data, bedrock] = await Promise.all([
-      fetch("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").then(e => e.json()),
-      fetch("https://api.github.com/repos/Mojang/bedrock-samples/releases").then(e => e.ok ? e.json() : []).catch(() => [])
+    const [java, bedrock] = await Promise.all([
+      javaAssets().manifest.versions(),
+      bedrockAssets().manifest.versions().catch(() => [])
     ])
-    for (const release of bedrock) {
-      data.versions.push({
-        id: release.tag_name,
-        type: release.prerelease ? "bedrock-preview" : "bedrock",
-        data: {
-          type: release.prerelease ? "bedrock-preview" : "bedrock",
-          downloads: {
-            client: {
-              url: `https://github.com/Mojang/bedrock-samples/archive/refs/tags/${release.tag_name}.zip`
-            }
-          }
-        }
+    const versions = java.map(entry => ({ id: entry.id, type: entry.type, entry: markRaw(entry) }))
+    for (const entry of bedrock) {
+      versions.push({
+        id: entry.tag ?? `v${entry.id}`,
+        type: entry.type === "snapshot" ? "bedrock-preview" : "bedrock",
+        entry: markRaw(entry)
       })
     }
-    for (const entry of data.versions) {
+    for (const entry of versions) {
       if (!manifest.types[entry.type]) {
         manifest.types[entry.type] = titleCase(entry.type)
       }
     }
-    manifest.latest = data.latest
-    manifest.versions = data.versions
+    manifest.versions = versions
     manifest.loaded = true
   } catch (e) {
     console.error(e)
@@ -97,20 +90,17 @@ function getVersion(id) {
   return entry
 }
 
-async function getVersionData(id) {
-  const entry = getVersion(id)
-  if (!entry) throw new Error("Unknown version")
-  if (entry.data) return entry.data
-  entry.data = await fetch(entry.url).then(e => e.json())
-  return entry.data
-}
-
 const isBedrockId = id => /^v\d+\.\d+\.\d+\.\d+/.test(id)
 
+const assetsOf = id => isBedrockId(id) ? bedrockAssets() : javaAssets()
+
 async function reconcileCached() {
+  indexedDB.deleteDatabase("asset_browser")
   if (!storage.cached.length) return
-  const keys = new Set(await idbKeys("jars").catch(() => null) ?? storage.cached.map(e => e.id))
-  const kept = storage.cached.filter(e => keys.has(e.id))
+  const lists = await Promise.all([javaAssets().listCache(), bedrockAssets().listCache()])
+  if (lists.includes(null)) return
+  const keys = new Set(lists.flat().map(e => e.key))
+  const kept = storage.cached.filter(e => keys.has(e.key))
   if (kept.length === storage.cached.length) return
   storage.cached = kept
   save()
@@ -137,75 +127,50 @@ function touchCached(id) {
   save()
 }
 
-async function evictOldest(keepId) {
-  const candidates = storage.cached.filter(e => e.id !== keepId)
-  if (!candidates.length) return false
-  const oldest = candidates.reduce((a, b) => (a.used ?? a.date) <= (b.used ?? b.date) ? a : b)
-  await idbDelete("jars", oldest.id).catch(() => {})
-  storage.cached = storage.cached.filter(e => e.id !== oldest.id)
-  save()
-  return true
+// the keys minecraft-asset-loader caches a version's download under
+async function cacheKey(id, entry) {
+  if (isBedrockId(id)) return `blobs/bedrock_${entry.tag ?? entry.id}`
+  return `blobs/jar_${(await entry.details()).downloads.client.sha1}`
 }
 
-async function cacheJar(id, buffer) {
-  const entry = { id, date: Date.now(), used: Date.now(), size: buffer.byteLength }
-  while (true) {
-    try {
-      await idbPut("jars", id, { ...entry, data: buffer })
-      storage.cached = storage.cached.filter(e => e.id !== id)
-      storage.cached.unshift(entry)
-      save()
-      return
-    } catch (e) {
-      if (e?.name !== "QuotaExceededError" || !await evictOldest(id)) return
-    }
-  }
+async function recordCached(id, entry, fallbackSize) {
+  const key = await cacheKey(id, entry)
+  const stored = (await assetsOf(id).listCache())?.find(e => e.key === key)
+  const previous = storage.cached.find(e => e.id === id)
+  storage.cached = storage.cached.filter(e => e.id !== id)
+  storage.cached.unshift({ id, key, date: previous?.date ?? Date.now(), used: Date.now(), size: stored?.size ?? fallbackSize })
+  save()
 }
 
 async function getVersionJar(id) {
   touchCached(id)
   if (loadedJars[id]) return loadedJars[id]
-  let buffer = (await idbGet("jars", id).catch(() => null))?.data
-  if (!buffer) {
-    const data = await getVersionData(id)
-    loadingMessage.value = `Downloading ${id}…`
-    progressBytes.value = true
-    progressDone.value = 0
-    progressTotal.value = 0
-    buffer = await fetchBuffer(proxy(data.downloads.client.url), (done, total) => {
+  const entry = getVersion(id)?.entry
+  if (!entry) throw new Error("Unknown version")
+  await entry.loadJar({
+    onProgress: (done, total) => {
+      loadingMessage.value = `Downloading ${id}…`
+      progressBytes.value = true
       progressDone.value = done
-      progressTotal.value = total
-    })
-    progressBytes.value = false
-    progressDone.value = 0
-    progressTotal.value = 0
-    // the workers read the jar out of IndexedDB themselves; on a first download
-    // the put may not have landed yet, so hand this one copy over instead
-    freshBuffer = buffer
-    cacheJar(id, buffer).catch(() => {})
-  }
+      progressTotal.value = total ?? 0
+    }
+  })
+  progressBytes.value = false
+  progressDone.value = 0
+  progressTotal.value = 0
   loadingMessage.value = `Loading ${id}…`
   await new Promise(resolve => setTimeout(resolve))
+  const buffer = await writeZip(await entry.list(), { compress: false })
   const parsed = await parseZip(buffer)
   parsed.buffer = buffer
-  if (isBedrockId(id)) {
-    const old = parsed.files
-    parsed.files = {}
-    for (const [file, data] of Object.entries(old)) {
-      parsed.files[file.replace(/^[^\/]+\//, "")] = data
-    }
-  }
   loadedJars[id] = parsed
+  recordCached(id, entry, buffer.byteLength).catch(() => {})
   return parsed
 }
 
 async function fetchObject(data) {
   if (data.content) return data.content
-  let content = await idbGet("objects", data.hash).catch(() => null)
-  if (!content) {
-    content = await fetchBuffer(proxy(`https://resources.download.minecraft.net/${data.hash.slice(0, 2)}/${data.hash}`))
-    idbPut("objects", data.hash, content).catch(() => {})
-  }
+  const content = await data.entry.read()
   data.content = content
   if (isImagePath(data.path)) {
     data.image = createImage(content, data.path)
@@ -214,17 +179,13 @@ async function fetchObject(data) {
 }
 
 async function getVersionObjects(id) {
-  const entry = getVersion(id)
-  if (!entry) return {}
-  const data = await getVersionData(id)
-  if ((data.type ?? "").includes("bedrock") || !data.assetIndex) return {}
-  if (data.objects) return data.objects
-  const index = await fetch(data.assetIndex.url).then(e => e.json())
-  const root = Date.parse(entry.releaseTime) >= 1403106748000 || data.assets === "1.7.10" ? "assets" : "assets/minecraft"
+  const entry = getVersion(id)?.entry
+  if (!entry || isBedrockId(id)) return {}
+  if (versionObjects.has(id)) return versionObjects.get(id)
   const objects = {}
-  for (const [file, object] of Object.entries(index.objects)) {
-    const packPath = file === "pack.mcmeta" ? file : `${root}/${file}`
-    objects[packPath] = { path: packPath, hash: object.hash, size: object.size, object: true }
+  for (const file of await entry.list({ objects: true })) {
+    if (file.source !== "object") continue
+    objects[file.path] = { path: file.path, hash: file.hash, size: file.size, object: true, entry: file }
   }
   const eager = Object.values(objects).filter(e => isImagePath(e.path) || e.path === "pack.mcmeta")
   if (eager.length) {
@@ -241,7 +202,7 @@ async function getVersionObjects(id) {
     }
     progressTotal.value = 0
   }
-  data.objects = objects
+  versionObjects.set(id, objects)
   return objects
 }
 
@@ -298,8 +259,6 @@ async function loadRemoteZip(url, startPath = []) {
     tree.value = buildTree(parsed)
     treeTick.value++
     jar.value = parsed
-    // the pool reads cached jars out of IndexedDB by id; a remote zip is never
-    // cached, so it only ever loads from the buffer handed over here
     startThumbnailPool(url, url, buffer)
     updateUrlParams(params => {
       params.delete("version")
@@ -348,9 +307,8 @@ async function loadVersion(id, startPath = []) {
     if (isBedrockId(id)) {
       stopThumbnailPool()
     } else {
-      startThumbnailPool(id, id, freshBuffer)
+      startThumbnailPool(id, id, parsed.buffer)
     }
-    freshBuffer = null
     updateUrlParams(params => {
       params.delete("zip")
       params.set("version", id)
@@ -411,7 +369,8 @@ function toggleObjects() {
 }
 
 async function deleteCachedVersion(id) {
-  await idbDelete("jars", id).catch(() => {})
+  const key = storage.cached.find(e => e.id === id)?.key
+  if (key) await assetsOf(id).clearCache(key)
   storage.cached = storage.cached.filter(e => e.id !== id)
   save()
 }
