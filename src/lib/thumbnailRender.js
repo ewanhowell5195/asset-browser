@@ -20,7 +20,7 @@ export async function renderThumbnailModel(lib, assets, path, args) {
   // pieces) would render face-on and unreadable, so pose those like an
   // inventory block. item sprites are flat in game, so they keep the default
   args.display ??= { type: "fallback", generated: false, rotateFlat: true, ...lib.DISPLAYS.block }
-  const buf = await lib.readFile(path, assets)
+  const buf = await lib.readFile(assets, path)
   if (!buf) return null
   return lib.renderModel({ ...args, model: JSON.parse(new TextDecoder().decode(buf)) })
 }
